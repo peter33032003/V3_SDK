@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#000000" />
+    <meta
+      name="description"
+      content="Web site created using create-react-app"
+    />
+    <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo192.png" />
+    <!--
+      manifest.json provides metadata used when your web app is installed on a
+      user's mobile device or desktop. See https://developers.google.com/web/fundamentals/web-app-manifest/
+    -->
+    <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
+    <!--
+      Notice the use of %PUBLIC_URL% in the tags above.
+      It will be replaced with the URL of the `public` folder during the build.
+      Only files inside the `public` folder can be referenced from the HTML.
+
+      Unlike "/favicon.ico" or "favicon.ico", "%PUBLIC_URL%/favicon.ico" will
+      work correctly both with client-side routing and a non-root public URL.
+      Learn how to configure a non-root public URL by running `npm run build`.
+    -->
+    <title>I2C</title>
+  </head>
+  <body>
+    <noscript>You need to enable JavaScript to run this app.</noscript>
+    <div id="root"></div>
+    <!--
+      This HTML file is a template.
+      If you open it directly in the browser, you will see an empty page.
+
+      You can add webfonts, meta tags, or analytics to this file.
+      The build step will place the bundled scripts into the <body> tag.
+
+      To begin the development, run `npm start` or `yarn start`.
+      To create a production bundle, use `npm run build` or `yarn build`.
+    -->
+    <script>
+      const path = require("path");
+      // 用來讀dll
+      const ffi = require("ffi-napi");
+      // 用來做pointer
+      const ref = require("ref-napi");
+      // 用來接stringbuilder
+      const StringBuilder = require('node-stringbuilder');
+      // 用來顯示錯誤訊息
+      const { dialog } = require('electron').remote;
+
+      // 用來獲取wmi資訊
+      const wmi = require("node-wmi");
+      const async = require('async');
+      const devPath = path.join(process.cwd(), "/");
+      const buildPath = path.join(__dirname, "../../");
+
+      //=============================== 各種wmi的選項
+      //
+      // Processor = 處理器相關
+      const queryOptions0 = {
+          class: "Win32_Processor",
+          host: "localhost"
+      };
+      // VideoController = 顯示相關
+      const queryOptions1 = {
+          class: "Win32_VideoController",
+          host: "localhost"
+      };
+
+      // PhysicalMemory = 記憶體相關
+      const queryOptions2 = {
+          class: "Win32_PhysicalMemory",
+          host: "localhost"
+      };
+
+      // ComputerSystem = 電腦系統相關
+      const queryOptions3 = {
+          class: "Win32_ComputerSystem",
+          host: "localhost"
+      };
+
+      // OperatingSystem = 作業系統相關
+      const queryOptions4 = {
+          class: "Win32_OperatingSystem",
+          host: "localhost"
+      };
+
+
+      //=============================== 獲取wmi資訊
+      let cpuInfo, displayInfo, ramInfo, computerInfo, osInfo;
+      // CPU
+      wmi.Query(queryOptions0, function (err, data) {
+          if (err) {
+              return console.log(err);
+          }
+          //console.log(data);
+          cpuInfo = data;
+      });
+
+      // display
+      wmi.Query(queryOptions1, function (err, data) {
+          if (err) {
+              return console.log(err);
+          }
+          //console.log(data);
+          displayInfo = data;
+      });
+
+      // memory
+      wmi.Query(queryOptions2, function (err, data) {
+          if (err) {
+              return console.log(err);
+          }
+          //console.log(data);
+          ramInfo = data;
+      });
+
+      // computer system
+      wmi.Query(queryOptions3, function (err, data) {
+          if (err) {
+              return console.log(err);
+          }
+          //console.log(data);
+          computerInfo = data;
+      });
+
+      // OS
+      wmi.Query(queryOptions4, function (err, data) {
+          if (err) {
+              return console.log(err);
+          }
+          //console.log(data);
+          osInfo = data;
+      });
+
+      //=============================== 回傳給各個呼叫的ts
+      window.cpuInfoFuncs = function () {
+          return cpuInfo;
+      }
+      window.displayInfoFuncs = function () {
+          return displayInfo;
+      }
+      window.ramInfoFuncs = function () {
+          return ramInfo;
+      }
+      window.computerInfoFuncs = function () {
+          return computerInfo;
+      }
+      window.osInfoFuncs = function () {
+          return osInfo;
+      }
+      window.addEventListener("beforeClose", (ev) => {
+          ev.preventDefault();
+          return ev.returnValue = 'Are you sure to close?';
+      });
+
+      //=============================== dll呼叫
+      window.RegistDll = function (env, path, config) {
+          try {
+              // Call *.dll with ffi
+              let abspath;
+              if (env === "production") {
+                  abspath = buildPath + path;
+              } else if (env === "development") {
+                  abspath = devPath + path;
+              }
+              console.log('abspath:', abspath);
+              return ffi.Library(abspath, config);
+          } catch (error) {
+              console.error("ffi.Library", error);
+          }
+      };
+
+      //====================================顯示錯誤訊息
+      window.showError = function (title, message) {
+          dialog.showErrorBox(title, message);
+      }
+
+      //=============================== 用來接值的pointer int uint chr short
+      window.RefInt = function () {
+          const tmp = ref.alloc('int');
+          return tmp;
+      };
+      window.RefuInt = function () {
+          const tmp = ref.alloc('uint64');
+          return tmp;
+      }
+      window.RefChr = function () {
+          let buf = new Buffer(32);
+          buf.type = ref.types.char;
+          buf = Buffer.from("                                ");
+          return buf;
+      };
+      window.RefShort = function () {
+          const tmp = ref.alloc('short');
+          return tmp;
+      };
+      window.AllocInt = function (size) {
+          let buf = new Buffer(size);
+          buf.type = ref.types.int;
+          return buf;
+      };
+
+      //=============================== 用來定義型別的pointer int uint chr short stringbuilder
+      window.PTR = function () {
+          const temp = ref.refType('int');
+          return temp;
+      };
+      window.PTRu = function () {
+          const temp = ref.refType('UInt32');
+          return temp;
+      };
+      window.PTRc = function () {
+          const temp = ref.refType(ref.types.char);
+          return temp;
+      };
+      window.PTRshort = function () {
+          const temp = ref.refType(ref.types.short);
+          return temp;
+      }
+      window.StrBuilder = function () {
+          const temp = new StringBuilder();
+          return temp;
+      }
+    </script>
+  </body>
+</html>
